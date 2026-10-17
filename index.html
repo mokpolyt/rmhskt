@@ -1,0 +1,134 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Nurse Shift</title>
+<style>
+:root{--bg:#eef3f6;--fg:#17313f;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10181d;--fg:#e4eef3;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10181d;--fg:#e4eef3;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:6px;padding:6px}
+#h{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-weight:600;font-size:15px}
+canvas{aspect-ratio:4/5;width:min(100%,calc((100dvh - 90px)*0.8));border-radius:10px;touch-action:none;display:block}
+small{opacity:.75;text-align:center}
+</style></head><body>
+<div id="h"><span id="sc"></span><span id="rp"></span><span id="dc"></span><span id="dn"></span><span id="ms"></span></div>
+<canvas id="c" width="800" height="1000"></canvas>
+<small>The nurse patrols and treats on her own. Tap a waiting patient to send her there first.</small>
+<script>
+const C=document.getElementById('c'),X=C.getContext('2d'),R=(a,b)=>a+Math.random()*(b-a);
+const beds=[];[150,330,510].forEach(x=>[200,370].forEach(y=>beds.push({x,y,p:null})));
+const SL=[];[780,900].forEach(y=>[70,170,270,370].forEach(x=>SL.push([x,y])));
+let S,last=0;
+function init(){S={t:0,score:0,rep:5,pat:[],veh:[],ev:[],mon:null,acc:0,night:false,na:0,
+T:{amb:3,heli:R(30,50),beach:R(20,35),mon:R(180,230),acc:R(40,54),traf:2,run:R(10,20),day:120},
+doc:{here:true,t:R(25,40),bk:false},nurse:{x:400,y:440,b:null,pt:1},msg:'',mt:0,an:[],dev:null,met:null,pk:{s:SL.map(p=>({x:p[0],y:p[1],t:null,a:0})),full:0,apt:0,at:20,fx:0,did:0}}}
+const ok=()=>S.doc.here||S.doc.bk;
+const say=m=>{S.msg=m;S.mt=4.5};
+function add(x,y,path,src,sp){S.pat.push({x,y,path,src,sp:sp||110,st:'arrive',pat:32,max:32,prog:0,rec:0,r0:1,b:null})}
+function mv(p,dt,sp){if(!p.path.length)return true;const a=p.path[0],dx=a.x-p.x,dy=a.y-p.y,d=Math.hypot(dx,dy);if(d<=sp*dt){p.x=a.x;p.y=a.y;p.path.shift()}else{p.x+=dx/d*sp*dt;p.y+=dy/d*sp*dt}return !p.path.length}
+const aisle=b=>b.x<=330?240:420;
+function leave(p,angry){const b=p.b;p.path=[{x:aisle(b),y:b.y},{x:aisle(b),y:440},{x:400,y:440},{x:400,y:490},{x:400,y:540},{x:-60,y:540}];b.p=null;p.b=null;p.st=angry?'angry':'leave';if(S.nurse.b===b)S.nurse.b=null}
+function tick(k,f,a,b,dt){if((S.T[k]-=dt)<=0){S.T[k]=R(a,b);f()}}
+function bite(){const n=Math.floor(R(3,7));say('🧟 Zombie bites in the city: '+n+' new patients!');
+for(let i=0;i<n;i++)S.ev.push({t:3+i*2.2,f:()=>{const x=Math.random()<.5?-40:840;add(x,540,[{x:400,y:540},{x:400,y:490},{x:400,y:440}],'bite',130)}})}
+function kill(p){if(p.b){p.b.p=null;if(S.nurse.b===p.b)S.nurse.b=null}p.rm=1;S.rep=Math.max(0,S.rep-1)}
+function upd(dt){
+S.t+=dt;if(S.mt>0)S.mt-=dt;
+tick('amb',()=>{S.veh.push({k:'a',x:-90,y:655,w:0,d:0});say('🚑 Ambulance incoming!')},14,35,dt);
+tick('heli',()=>{S.veh.push({k:'h',x:900,y:-60,s:0,w:0});say('🚁 Helicopter inbound!')},50,95,dt);
+tick('beach',()=>{add(700,830,[{x:400,y:625},{x:400,y:490},{x:400,y:440}],'beach',170);say('🏖️ A patient ran from the beach!')},30,60,dt);
+tick('mon',()=>{S.mon={x:850,y:560,path:[{x:400,y:560},{x:400,y:440},{x:240,y:440},{x:240,y:200},{x:420,y:200},{x:420,y:370},{x:420,y:440},{x:400,y:490},{x:400,y:560},{x:-100,y:560}]};say('👹 MONSTER attacking the hospital!')},180,230,dt);
+tick('acc',()=>{S.acc=7;say('💥 Accident in front of the hospital!');add(370,640,[{x:400,y:490},{x:400,y:440}],'acc',120);add(440,640,[{x:400,y:490},{x:400,y:440}],'acc',120)},40,54,dt);
+tick('traf',()=>{const r=Math.random()<.5;S.veh.push({k:'c',x:r?-80:880,y:r?680:622,dir:r?1:-1,e:['🚗','🚙','🏍️','🛵','🚕'][Math.floor(R(0,5))],sp:R(160,260)})},5,11,dt);
+tick('run',()=>{const g=Math.random()<.5,b=!g||Math.random()<.6;
+if(g){const r=Math.random()<.5;S.veh.push({k:'r',x:r?-40:840,y:R(740,860),dir:r?1:-1,sp:150})}
+if(b){const r=Math.random()<.5;S.veh.push({k:'r',x:r?500:820,y:R(900,975),dir:r?1:-1,sp:130,lim:[480,830]})}
+say('🏃 People are jogging around')},28,44,dt);
+tick('day',()=>{S.night=!S.night;S.T.day=S.night?24:120;say(S.night?'🌙 Night falls':'☀️ Day breaks')},120,120,dt);
+S.na+=((S.night?.5:0)-S.na)*Math.min(1,dt*.8);
+S.T.an=S.T.an??R(10,20);S.T.house=S.T.house??20;
+tick('an',()=>{const r=Math.random()<.5;S.an.push({x:r?-60:860,y:540,s:r?-100:900,e:['🐗','🐻','🦍','🐺','🐘'][Math.floor(R(0,5))],path:[{x:400,y:540},{x:400,y:490},{x:400,y:440}],c:null,ph:0});say('🐾 An animal is entering the hospital!')},23,34,dt);
+const pk=S.pk;
+tick('house',()=>{const e=pk.s.find(s=>!s.t);if(e){e.t='h';e.a=0;say('🏠 A new house is going up in the park')}else if(!S.dev){S.dev={x:560,y:548,st:0,t:R(20,40),d:0};say('🧑‍💼 Angry developer: no land left!')}},240,240,dt);
+for(const s of pk.s)if(s.t)s.a+=dt;
+if(pk.apt>0&&(pk.at-=dt)<=0){pk.at=20;const e=pk.s.find(s=>!s.t);if(e){e.t='a';e.a=0;pk.apt--;say('🏢 An apartment block is erected')}}
+const em=pk.s.find(s=>!s.t);
+if(!em&&!S.met){if(!pk.full)pk.full=540;else if((pk.full-=dt)<=0){pk.full=0;S.met={t:0};say('☄️ Meteor incoming!')}}else if(em)pk.full=0;
+if(S.met){const m=S.met;m.t+=dt;if(m.t>=2){for(const s of pk.s)if(s.t=='h')s.t=null;pk.fx=5;S.met=null;if(!pk.did){pk.did=1;pk.apt=4}say('☄️ The meteor destroyed the houses!')}}
+if(pk.fx>0)pk.fx-=dt;
+const dv=S.dev;if(dv){if(dv.st==0){dv.x=560+Math.sin(S.t*3)*40;if((dv.t-=dt)<=0)dv.st=1}
+else if(dv.st==1){if(dv.y<642)dv.y+=70*dt;if(S.veh.some(v=>(v.k=='c'||v.k=='a')&&Math.abs(v.x-dv.x)<45&&Math.abs(v.y-dv.y)<45)){dv.st=2;dv.d=3;say('💀 The developer was hit by a car')}}
+else if((dv.d-=dt)<=0)S.dev=null}
+if(S.acc>0)S.acc-=dt;
+for(const e of S.ev){if((e.t-=dt)<=0){e.f();e.rm=1}}S.ev=S.ev.filter(e=>!e.rm);
+const d=S.doc;if((d.t-=dt)<=0){d.here=!d.here;d.bk=false;d.t=d.here?R(30,55):R(12,18);
+if(!d.here){say('☕ Doctor stepped out!');if(Math.random()<.55){d.bk=true;say('📞 Doctor called a colleague in!')}}}
+for(const v of S.veh){
+if(v.k=='a'){if(v.w>0){v.w-=dt;if(v.w<=0)v.d=1}else{v.x+=(v.d?260:200)*dt;if(!v.d&&v.x>=400){v.x=400;v.w=1.2;add(400,630,[{x:400,y:490},{x:400,y:440}],'amb')}}if(v.x>900)v.rm=1}
+else if(v.k=='h'){const tx=v.s==2?900:690,ty=v.s==2?-80:100;if(v.s==1){v.w-=dt;if(v.w<=0)v.s=2}else{const dx=tx-v.x,dy=ty-v.y,dd=Math.hypot(dx,dy),sp=230*dt;if(dd<=sp){v.x=tx;v.y=ty;if(v.s==0){v.s=1;v.w=1.8;add(690,130,[{x:690,y:440},{x:400,y:440}],'heli')}else v.rm=1}else{v.x+=dx/dd*sp;v.y+=dy/dd*sp}}}
+else{v.x+=v.dir*v.sp*dt;if(v.x<-100||v.x>900||(v.lim&&(v.x<v.lim[0]||v.x>v.lim[1])))v.rm=1}}
+S.veh=S.veh.filter(v=>!v.rm);
+if(S.mon){const m=S.mon;if(mv(m,dt,170))S.mon=null;
+for(const p of S.pat)if(!p.rm&&p.st!='leave'&&p.st!='angry'&&Math.hypot(p.x-m.x,p.y-m.y)<55){kill(p);say('💀 The monster got a patient!')}}
+for(const a of S.an){
+if(a.ph==0){if(a.path.length)mv(a,dt,150);else{const t=S.pat.find(p=>!p.rm&&['wait','recover','lobby','zomb','toBed'].includes(p.st));
+if(t){const dx=t.x-a.x,dy=t.y-a.y,d=Math.hypot(dx,dy);if(d<30){a.c=t.z?'🧟':'😵';if(t.b){t.b.p=null;if(S.nurse.b===t.b)S.nurse.b=null}t.rm=1;S.rep=Math.max(0,S.rep-1);a.ph=1;a.path=[{x:400,y:440},{x:400,y:490},{x:400,y:560},{x:a.s,y:560}];say('🐾 The animal carried a patient away!')}else{a.x+=dx/d*170*dt;a.y+=dy/d*170*dt}}
+else{a.c='🧍';a.ph=1;a.path=[{x:400,y:490},{x:400,y:560},{x:a.s,y:560}];say('🐾 The animal grabbed a visitor!')}}}
+else if(mv(a,dt,190))a.rm=1}
+S.an=S.an.filter(a=>!a.rm);
+let li=0;
+for(const p of S.pat){
+if(p.st=='arrive'){if(mv(p,dt,p.sp))p.st='lobby'}
+else if(p.st=='lobby'){p.x+=(250+li*48-p.x)*Math.min(1,dt*4);p.y+=(440-p.y)*Math.min(1,dt*4);li++;p.pat-=dt*(ok()?1:2.2);
+const fb=beds.filter(b=>!b.p).sort((a,c)=>Math.hypot(a.x-400,a.y-440)-Math.hypot(c.x-400,c.y-440))[0];
+if(fb){fb.p=p;p.b=fb;p.st='toBed';p.path=[{x:aisle(fb),y:440},{x:aisle(fb),y:fb.y},{x:fb.x,y:fb.y}]}
+else if(p.pat<=0){S.rep=Math.max(0,S.rep-1);p.st='angry';p.path=[{x:400,y:490},{x:400,y:540},{x:-60,y:540}]}}
+else if(p.st=='toBed'){if(mv(p,dt,140))p.st='wait'}
+else if(p.st=='wait'){p.pat-=dt*(ok()?1:2.2);if(p.pat<=0){S.rep=Math.max(0,S.rep-1);leave(p,true)}}
+else if(p.st=='recover'){p.rec-=dt;if(p.rec<=0)leave(p,false)}
+else if(p.st=='zomb'){p.rec-=dt;if(p.rec<=0){leave(p,true);bite()}}
+else if(p.st=='leave'||p.st=='angry'){if(mv(p,dt,130)){p.rm=1;if(p.st=='leave'){S.score++;if(S.score%5==0&&S.rep<5)S.rep++}}}}
+S.pat=S.pat.filter(p=>!p.rm);
+const n=S.nurse;
+if(!n.b&&(n.pt-=dt)<=0){const w=beds.filter(b=>b.p&&b.p.st=='wait').sort((a,c)=>a.p.pat-c.p.pat)[0];n.b=w||beds[Math.floor(R(0,6))];n.pt=R(.8,2.2)}
+if(n.b){const tx=n.b.x,ty=n.b.y+85,dx=tx-n.x,dy=ty-n.y,dd=Math.hypot(dx,dy),sp=300*dt;
+if(dd>sp){n.x+=dx/dd*sp;n.y+=dy/dd*sp}else{n.x=tx;n.y=ty;const p=n.b.p;
+if(p&&p.st=='wait'&&ok()){p.prog+=dt/3.5;if(p.prog>=1){n.b=null;if(Math.random()<.12){p.st='zomb';p.z=1;p.rec=1.6;say('💊 Wrong medication! Patient turned zombie!')}else{p.st='recover';p.rec=p.r0=R(40,72)}}}
+else if(!p||p.st!='wait')n.b=null}}}
+function E(e,x,y,s){X.font=s+'px serif';X.textAlign='center';X.textBaseline='middle';X.fillText(e,x,y)}
+function bar(x,y,w,f,c){X.fillStyle='rgba(0,0,0,.35)';X.fillRect(x-w/2,y,w,8);X.fillStyle=c;X.fillRect(x-w/2,y,w*Math.max(0,Math.min(1,f)),8)}
+function draw(){
+X.fillStyle='#e6f0f3';X.fillRect(0,0,800,480);
+X.strokeStyle='#d3e2e7';X.lineWidth=2;for(let i=0;i<800;i+=80){X.beginPath();X.moveTo(i,0);X.lineTo(i,480);X.stroke()}
+X.fillStyle='#5b7f8f';X.fillRect(0,480,350,20);X.fillRect(450,480,350,20);X.fillStyle='#8ed1a5';X.fillRect(350,480,100,20);
+X.fillStyle='#b9c8cf';X.font='bold 26px sans-serif';X.textAlign='left';X.fillText('HOSPITAL',20,455);
+X.fillStyle='#c9c6bc';X.fillRect(0,500,800,100);X.fillStyle='#3a3f46';X.fillRect(0,600,800,100);
+X.strokeStyle='#e9e9e9';X.lineWidth=4;X.setLineDash([30,24]);X.beginPath();X.moveTo(0,650);X.lineTo(800,650);X.stroke();X.setLineDash([]);
+X.fillStyle='#86b86c';X.fillRect(0,700,800,300);
+X.fillStyle='#f0dca8';X.beginPath();X.moveTo(800,720);X.quadraticCurveTo(520,750,440,1000);X.lineTo(800,1000);X.fill();
+X.fillStyle='#4fa8d8';X.beginPath();X.moveTo(800,850);X.quadraticCurveTo(690,880,640,1000);X.lineTo(800,1000);X.fill();
+E('🏖️',560,890,46);E('🌴',480,960,40);
+X.fillStyle='#d4dde1';X.beginPath();X.arc(690,100,62,0,7);X.fill();X.fillStyle='#8a99a2';X.font='bold 60px sans-serif';X.textAlign='center';X.textBaseline='middle';X.fillText('H',690,102);
+X.fillStyle='#b98d5a';X.fillRect(55,70,110,40);X.fillRect(180,70,110,40);E(S.doc.here?'🧑‍⚕️':'☕',110,50,52);if(S.doc.bk)E('👨‍⚕️',235,50,52);
+if(!ok()){X.fillStyle='#c0392b';X.font='bold 18px sans-serif';X.fillText('No doctor!',110,130)}
+for(const b of beds){X.fillStyle='#fff';X.fillRect(b.x-42,b.y-55,84,110);X.fillStyle='#7db7d6';X.fillRect(b.x-42,b.y-5,84,60);X.strokeStyle='#9bb';X.lineWidth=2;X.strokeRect(b.x-42,b.y-55,84,110)}
+for(const s of S.pk.s){if(s.t=='h')E(s.a<10?'🚧':'🏠',s.x,s.y,60);else if(s.t=='a')E(s.a<8?'🏗️':'🏢',s.x,s.y,84);else if(S.pk.fx>0)E('🔥',s.x,s.y,50)}
+if(S.acc>0){E('🚗',365,655,60);E('🚙',440,665,60);E('💥',402,640,70)}
+for(const v of S.veh){if(v.k=='a'||v.k=='c'||v.k=='r'){X.save();X.translate(v.x,v.y);if(v.k=='a'||v.dir>0)X.scale(-1,1);E(v.k=='a'?'🚑':v.k=='r'?'🏃':v.e,0,0,v.k=='a'?80:v.k=='r'?44:56);X.restore()}else E('🚁',v.x,v.y,90)}
+for(const p of S.pat){const inBed=p.st=='wait'||p.st=='recover'||p.st=='zomb';const f=p.z?'🧟':p.st=='recover'?'🙂':p.st=='leave'?'😄':p.st=='angry'?'😡':p.pat/p.max<.5?'😠':p.src=='bite'?'🤕':'🤒';
+E(f,p.x,inBed?p.y-12:p.y,42);
+if(p.st=='wait'||p.st=='lobby'){bar(p.x,p.y-48,50,p.pat/p.max,p.pat/p.max<.4?'#e74c3c':'#f1c40f');
+if(!ok()||p.pat/p.max<.4){X.fillStyle='#fff';X.fillRect(p.x+16,p.y-80,92,24);X.fillStyle='#c0392b';X.font='bold 15px sans-serif';X.textAlign='left';X.fillText(ok()?'Help me!':'Doctor?!',p.x+22,p.y-67)}}
+if(p.st=='wait'&&p.prog>0)bar(p.x,p.y+30,60,p.prog,'#2ecc71');
+if(p.st=='recover')bar(p.x,p.y+30,60,1-p.rec/p.r0,'#3498db')}
+const n=S.nurse;E('👩‍⚕️',n.x,n.y,50);
+if(n.b&&n.b.p&&n.b.p.st=='wait'&&!ok()&&Math.hypot(n.x-n.b.x,n.y-n.b.y-85)<4)E('⏳',n.x+30,n.y-30,28);
+for(const a of S.an){E(a.e,a.x,a.y,64);if(a.c)E(a.c,a.x,a.y-42,34)}
+const dv=S.dev;if(dv){if(dv.st==2)E('💀',dv.x,dv.y,50);else{E('🧑‍💼',dv.x,dv.y,46);E('🪧',dv.x+28,dv.y-12,40);X.fillStyle='#fff';X.fillRect(dv.x-60,dv.y-62,120,22);X.fillStyle='#c0392b';X.font='bold 14px sans-serif';X.textAlign='center';X.fillText('😡 No land!',dv.x,dv.y-46)}}
+if(S.met){const k=S.met.t/2;E('☄️',820-600*k,-60+900*k,90)}
+if(S.mon)E('👹',S.mon.x,S.mon.y,95);
+if(S.na>.01){X.fillStyle='rgba(5,10,45,'+S.na+')';X.fillRect(0,0,800,1000)}}
+function hud(){sc.textContent='🏠 Home: '+S.score;rp.textContent='Rep: '+'❤️'.repeat(S.rep)+'🖤'.repeat(5-S.rep);dc.textContent=S.doc.here?'🧑‍⚕️ Doctor in':S.doc.bk?'📞 Backup doctor':'☕ Doctor out';dn.textContent=(S.night?'🌙':'☀️')+' 🏠'+S.pk.s.filter(s=>s.t=='h').length+' 🏢'+S.pk.s.filter(s=>s.t=='a').length;ms.textContent=S.mt>0?S.msg:''}
+function loop(t){const dt=Math.min(.05,(t-last)/1000||0);last=t;upd(dt);draw();hud();requestAnimationFrame(loop)}
+C.addEventListener('pointerdown',e=>{const r=C.getBoundingClientRect(),x=(e.clientX-r.left)*800/r.width,y=(e.clientY-r.top)*1000/r.height;
+const b=beds.find(b=>b.p&&b.p.st=='wait'&&Math.abs(x-b.x)<65&&Math.abs(y-b.y)<75);if(b)S.nurse.b=b});
+init();requestAnimationFrame(loop);
+</script></body></html>
